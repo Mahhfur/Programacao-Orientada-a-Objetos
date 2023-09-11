@@ -1,8 +1,7 @@
 import { Bike } from "./bike";
 import { Rent } from "./rent";
 import { User } from "./user";
-import crypto from 'crypto';
-import * as bcrypt from 'bcrypt';
+import crypto from 'crypto'
 
 export class App {
     users: User[] = []
@@ -10,100 +9,89 @@ export class App {
     rents: Rent[] = []
 
     findUser(email: string): User | undefined {
-        return this.users.find(user => user.email === email);
+        return this.users.find(user => { return user.email === email})
     }
 
-    async hashPassword(password: string): Promise<string> {
-        const saltRounds = 10;
-        return await bcrypt.hash(password, saltRounds);
-    }
-
-    async registerUser(user: User, password: string): Promise<string> {
-        if (this.findUser(user.email)) {
-            throw new Error('Duplicate user.');
+    registerUser(user: User): void {
+        for (const rUser of this.users) {
+            if (rUser.email === user.email) {
+                throw new Error('Duplicate user.')
+            }
         }
+        user.id = crypto.randomUUID()
+        this.users.push(user)
+    }
 
-        user.id = crypto.randomUUID();
-        user.password = await this.hashPassword(password);
-        this.users.push(user);
+    registerBike(bike: Bike): void {
+        for (const rBike of this.bikes) {
+            if(rBike.id === bike.id) {
+                throw new Error('Duplicate Bike.')
+            }
+        }
+        bike.id = crypto.randomUUID()
+        this.bikes.push(bike)
+    }
+
+    removeUser(user: User): void {
+        const index = this.users.findIndex(rUser => rUser.id === user.id);
         
-        return user.id;
-    }
-
-    async authenticateUser(userId: string, password: string): Promise<boolean> {
-        const user = this.users.find(u => u.id === userId);
-        if (user) {
-            return await bcrypt.compare(password, user.password);
-        }
-        return false;
-    }
-
-    listUsers(): User[] {
-        return this.users;
-    }
-
-    listRents(): Rent[] {
-        return this.rents;
-    }
-
-    listBikes(): Bike[] {
-        return this.bikes;
-    }
-
-    registerBike(bike: Bike): string {
-        bike.id = crypto.randomUUID();
-        this.bikes.push(bike);
-        return bike.id;
-    }
-
-    removeUser(email: string): void {
-        const userIndex = this.users.findIndex(user => user.email === email);
-        if (userIndex !== -1) {
-            this.users.splice(userIndex, 1);
+        if (index !== -1) {
+            this.users.splice(index, 1);
         } else {
-            throw new Error('User does not exist.');
-        }
-    }
-
-    rentBike(bikeId: string, userEmail: string, startDate: Date, endDate: Date): void {
-        const bike = this.bikes.find(b => b.id === bikeId);
-        const user = this.findUser(userEmail);
-
-        if (!bike) {
-            throw new Error('Bike not found.');
-        }
-
-        if (!user) {
             throw new Error('User not found.');
         }
+    }
 
-        const overlappingRent = this.rents.find(rent =>
-            rent.bike.id === bikeId &&
-            !rent.dateReturned &&
-            (startDate <= rent.dateTo && endDate >= rent.dateFrom)
-        );
-
+    rentBike(user: User, bike: Bike, startDate: Date, endDate: Date): void {
+        const userIndex = this.users.findIndex(rUser => rUser.id === user.id);
+        const bikeIndex = this.bikes.findIndex(rBike => rBike.id === bike.id);
+    
+        // caso nao ache o user ou a bike 
+        if (userIndex === -1) {
+            throw new Error('User not found.');
+        }
+    
+        if (bikeIndex === -1) {
+            throw new Error('Bike not found.');
+        }
+    
+        const bikeToRent = this.bikes[bikeIndex];
+        const overlappingRent = this.rents.find(
+            rent => startDate <= rent.dateTo && endDate >= rent.dateFrom
+            );
+    
         if (overlappingRent) {
-            throw new Error('Overlapping dates.');
+            throw new Error('Overlapping rental dates.');
         }
-
-        const newRent = Rent.create(this.rents, bike, user, startDate, endDate);
-        this.rents.push(newRent);
+    
+        const rent = Rent.create(this.rents, bikeToRent, user, startDate, endDate);
+        this.rents.push(rent);
     }
 
-    returnBike(bikeId: string, userEmail: string) {
-        const today = new Date();
-        const rent = this.rents.find(rent => 
-            rent.bike.id === bikeId &&
-            rent.user.email === userEmail &&
-            !rent.dateReturned &&
-            rent.dateFrom <= today
+    returnBike(user: User, bike: Bike, returnDate: Date): void {
+        const userIndex = this.users.findIndex(rUser => rUser.id === user.id);
+        const bikeIndex = this.bikes.findIndex(rBike => rBike.id === bike.id);
+    
+        // Verifique se o usuário e a bicicleta existem
+        if (userIndex === -1) {
+            throw new Error('User not found.');
+        }
+    
+        if (bikeIndex === -1) {
+            throw new Error('Bike not found.');
+        }
+    
+        // Verifique se há um aluguel correspondente em andamento
+        const existingRent = this.rents.find(
+            rent => rent.user.id === user.id && rent.bike.id === bike.id && !rent.dateReturned
         );
-        
-        if (rent) {
-            rent.dateReturned = today;
-        } else {
-            throw new Error('Rent not found.');
+    
+        if (!existingRent) {
+            throw new Error('No active rental found for this user and bike.');
         }
+    
+        // Atualize a data de retorno no aluguel
+        existingRent.dateReturned = returnDate;
     }
+    
 }
